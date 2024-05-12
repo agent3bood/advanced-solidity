@@ -1,0 +1,6 @@
+[submodule "week_1/lib/openzeppelin-contracts"]
+	path = week_1/lib/openzeppelin-contracts
+	url = https://github.com/Openzeppelin/openzeppelin-contracts
+[submodule "week_1/lib/forge-std"]
+	path = week_1/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
