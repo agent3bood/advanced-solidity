@@ -19,17 +19,12 @@ contract Curved {
         token = _token;
     }
 
-    /// price for n tokens
-    function price(uint256 n) private view returns (uint256) {
-        return currentPrice * n + increment * (n - 1);
-    }
-
     /// Buy tokens by specifying amount and sending eth
     /// if the eth is not enough the transaction will revert
     /// if the eth is more than enough the balance will be sent back
     function buy(uint256 amount) external payable {
         require(supply >= amount, "not enough supply");
-        uint256 price = price(amount);
+        uint256 price = calculatePrice(amount);
         require(msg.value >= price, "price offer too low");
 
         bool success = token.transfer(msg.sender, amount);
@@ -63,6 +58,11 @@ contract Curved {
 
         supply += amount;
         currentPrice = supply * 1 ether;
+    }
+
+    /// price for n tokens
+    function calculatePrice(uint256 n) private view returns (uint256) {
+        return currentPrice * n + increment * (n - 1);
     }
 
     function sqrt(uint256 x) private pure returns (uint256 y) {
