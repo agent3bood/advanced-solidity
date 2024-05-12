@@ -14,8 +14,6 @@ contract Curved {
     uint256 increment = 1 ether;
     uint256 public supply = 0;
 
-    event E(uint256);
-
     // load initial eth in the contract to be able to buy tokens
     constructor(IERC20 _token) payable {
         token = _token;
