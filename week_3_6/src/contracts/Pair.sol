@@ -60,9 +60,9 @@ contract Pair is IPair, ERC20 {
             uint liquidityA = amountA * totalSupply / reserveA;
             uint liquidityB = amountB * totalSupply / reserveB;
             if(liquidityA > liquidityB) {
-                liquidity = liquidityA;
-            } else {
                 liquidity = liquidityB;
+            } else {
+                liquidity = liquidityA;
             }
         }
 
