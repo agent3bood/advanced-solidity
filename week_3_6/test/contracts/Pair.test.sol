@@ -69,4 +69,35 @@ contract TestPair is Test {
         pair.mint(user1);
         vm.stopPrank();
     }
+/*
+TODO
+    function test_mintFrontRunningExpensive() public {
+        // owner tries to mint 10_000 & 10_000 tokens
+        // attacker would need x & x to steal from owner
+
+        // 10_000 * x / y = 1
+        // 1 / 10_000 = x/y
+        // 10_000 = y/x
+        // I need reserveA/totalSupply to equal 10_000
+        // donate to reserveA 10_000 * 10_000
+
+        // attacker
+        vm.startPrank(user2);
+        tokenA.mint(10_000);
+        tokenB.mint(10_000);
+        tokenA.transfer(address(pair), 10_000);
+        tokenB.transfer(address(pair), 10_000);
+        pair.mint(user2);
+        assertGt(pair.balanceOf(user2), 0);
+
+        // owner
+        vm.startPrank(user1);
+        tokenA.mint(10_000);
+        tokenB.mint(10_000);
+        tokenA.transfer(address(pair), 10_000);
+        tokenB.transfer(address(pair), 10_000);
+        pair.mint(user1);
+        assertEq(pair.balanceOf(user1), 1);
+    }
+    */
 }
