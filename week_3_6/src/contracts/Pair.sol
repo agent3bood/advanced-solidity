@@ -8,6 +8,8 @@ import "solady/utils/FixedPointMathLib.sol";
 import "./interfaces/IPair.sol";
 
 contract Pair is IPair, ERC20 {
+    error InsufficientLuquidityBurnt();
+
     string private _name;
     string private _symbol;
 
@@ -72,9 +74,34 @@ contract Pair is IPair, ERC20 {
         _update(balanceA, balanceB);
     }
 
-    function burn(address to) external override returns (uint amount0, uint amount1) {}
+    function burn(address to) external override returns (uint amountA, uint amountB) {
+        uint totalSupply = totalSupply();
+        uint liquidity = balanceOf(address(this));
+        (uint reserveA, uint reserveB) = getReserves();
+        ERC20 tokenA = _tokenA;
+        ERC20 tokenB = _tokenB;
+        uint balanceA = tokenA.balanceOf(address(this));
+        uint balanceB = tokenB.balanceOf(address(this));
 
-    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) override external {}
+        amountA = liquidity * balanceA / totalSupply;
+        amountB = liquidity * balanceB / totalSupply;
+        if(amountA < 1 || amountB < 1) {
+            revert InsufficientLuquidityBurnt();
+        }
+
+        _burn(address(this), liquidity);
+        tokenA.transfer(to, amountA);
+        tokenB.transfer(to, amountB);
+
+        _update(balanceA, balanceB);
+
+    }
+
+    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) override external {
+        // xy=k
+        // x=k/y
+        // y=k/x
+    }
 
     function _update(uint newBalanceA, uint newBalanceB) private {
         _reserveA = newBalanceA;
