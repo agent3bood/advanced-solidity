@@ -16,8 +16,8 @@ import "solady/tokens/ERC20.sol";
     function swap(uint amountAOut, uint amountBOut, address to) external;
 }*/
 
-pragma solidity ^0.8.0;
 
+// TODO ERC20
 interface IPair {
     /*********
     * Events *
@@ -46,7 +46,7 @@ interface IPair {
         uint deadline
     ) external returns(uint liquidity);
 
-    /// @notice Remove liquidity by approving
+    /// @notice Remove liquidity by approving amountAMin & amountBMin
     /// @dev Burn liquidity by approving it first
     /// @param liquidity The amount of liquidity to be burnt
     /// @param amountAMin The minimum desired amount of tokenA
@@ -115,10 +115,10 @@ interface IPair {
     *****************/
 
     /// @notice The first token in the pair
-    function tokenA() external view returns (address);
+    function tokenA() external view returns (ERC20);
 
     /// @notice The second token in the pair
-    function tokenB() external view returns (address);
+    function tokenB() external view returns (ERC20);
 
     /// @notice The pair reserves
     /// @return reserveA The reserve of tokenA
