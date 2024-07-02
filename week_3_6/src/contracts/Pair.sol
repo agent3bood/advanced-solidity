@@ -126,35 +126,32 @@ contract Pair is ERC20 {
         uint totalSupply = totalSupply();
         uint liquidity = balanceOf(address(this));
         (uint reserveA, uint reserveB) = getReserves();
-        ERC20 tokenA = _tokenA;
-        ERC20 tokenB = _tokenB;
-        uint balanceA = tokenA.balanceOf(address(this));
-        uint balanceB = tokenB.balanceOf(address(this));
+        ERC20 __tokenA = _tokenA;
+        ERC20 __tokenB = _tokenB;
 
-        amountA = liquidity * balanceA / totalSupply;
-        amountB = liquidity * balanceB / totalSupply;
-        if (amountA < 1 || amountB < 1) {
+        amountA = liquidity * reserveA / totalSupply;
+        amountB = liquidity * reserveB / totalSupply;
+        if (amountA == 0 || amountB == 0) {
             revert InsufficientLiquidityBurnt();
         }
 
         _burn(address(this), liquidity);
-        tokenA.transfer(to, amountA);
-        tokenB.transfer(to, amountB);
+        __tokenA.transfer(to, amountA);
+        __tokenB.transfer(to, amountB);
 
-        _updateReserves(balanceA, balanceB);
-
+        _updateReserves(__tokenA.balanceOf(address(this)), __tokenB.balanceOf(address(this)));
     }
 
     /// @notice Low level call to swap tokens
-    /// @param amountAOut The desired amount of tokenA
-    /// @param amountBOut The desired amount of tokenB
+    /// @param amountOutA The desired amount of tokenA
+    /// @param amountOutB The desired amount of tokenB
     /// @param to The receiving address of tokens
     function swap(uint amountOutA, uint amountOutB, address to) lock external {
         (uint reserveA, uint reserveB) = getReserves();
-        ERC20 tokenA = _tokenA;
-        ERC20 tokenB = _tokenB;
-        uint balanceA = tokenA.balanceOf(address(this));
-        uint balanceB = tokenB.balanceOf(address(this));
+        ERC20 __tokenA = _tokenA;
+        ERC20 __tokenB = _tokenB;
+        uint balanceA = __tokenA.balanceOf(address(this));
+        uint balanceB = __tokenB.balanceOf(address(this));
         uint amountInA = reserveA - balanceA;
         uint amountInB = reserveB - balanceB;
 
@@ -170,8 +167,8 @@ contract Pair is ERC20 {
 
         {
             // scope for Stack too deep error
-            tokenA.transfer(to, amountOutA);
-            tokenB.transfer(to, amountOutB);
+            __tokenA.transfer(to, amountOutA);
+            __tokenB.transfer(to, amountOutB);
             emit Swap(msg.sender, amountInA, amountInB, amountOutA, amountOutB, to);
         }
     }
@@ -184,6 +181,8 @@ contract Pair is ERC20 {
     /// @param amountB The approved amount for tokenB
     /// @param to The address to receive liquidity tokens
     /// @param deadline Transaction deadline
+    /// @return amountA The tokenA amount used
+    /// @return amountB The tokenB amount used
     /// @return liquidity The minted liquidity amount
     function addLiquidity(
         uint minLiquidity,
@@ -270,9 +269,12 @@ contract Pair is ERC20 {
     /********************
     * Private Functions *
     ********************/
+
+    /// @notice Update the pool reserve values and emit Sync event
     function _updateReserves(uint newBalanceA, uint newBalanceB) private {
         _reserveA = newBalanceA;
         _reserveB = newBalanceB;
+        emit Sync(newBalanceA, newBalanceB);
     }
 
     /*****************
