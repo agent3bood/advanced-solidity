@@ -194,10 +194,10 @@ contract Pair is ERC20 {
     ) external ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
         // We want to keep the constant k the same (or greater)
         // after the liquidity is added
-        // Ra is reverveA
-        // Rb is reverveB
-        // Ra' is reverveA after the liquidity is added
-        // Rb' is reverveb after the liquidity is added
+        // Ra is reserveA
+        // Rb is reserveB
+        // Ra' is reserveA after the liquidity is added
+        // Rb' is reserveB after the liquidity is added
         // ∆A is amountA that will be added to the liquidity
         // ∆B is amountB that will be added to the liquidity
         // Ra' = Ra + ∆A
@@ -307,15 +307,15 @@ contract Pair is ERC20 {
     * Pure Functions *
     *****************/
 
-    // @dev Given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset.
-    // @param amountA The amount of tokenA.
-    // @param reserveA The reserve amount of tokenA in the liquidity pool.
-    // @param reserveB The reserve amount of tokenB in the liquidity pool.
-    // @return amountB The calculated amount of tokenB.
-    // @notice This function assumes that `amountA`, `reserveA`, and `reserveB` are all positive values.
+     /// @dev Given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset.
+     /// @param amountA The amount of tokenA.
+     /// @param reserveA The reserve amount of tokenA in the liquidity pool.
+     /// @param reserveB The reserve amount of tokenB in the liquidity pool.
+     /// @return amountB The calculated amount of tokenB.
+     /// @notice This function assumes that `amountA`, `reserveA`, and `reserveB` are all positive values.
     function quote(uint amountA, uint reserveA, uint reserveB) internal pure returns (uint amountB) {
-        require(amountA > 0);
-        require(reserveA > 0 && reserveB > 0);
+        require(amountA > 0, "amountA must be greater than 0");
+        require(reserveA > 0 && reserveB > 0, "reserves must be greater than 0");
         amountB = amountA * reserveB / reserveA;
     }
 }
