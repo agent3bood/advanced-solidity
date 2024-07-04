@@ -94,38 +94,45 @@ contract TestPair is Test {
 
         vm.stopPrank();
     }
-/*
-TODO
-    function test_mintFrontRunningExpensive() public {
-        // owner tries to mint 10_000 & 10_000 tokens
-        // attacker would need x & x to steal from owner
 
-        // 10_000 * x / y = 1
-        // 1 / 10_000 = x/y
-        // 10_000 = y/x
-        // I need reserveA/totalSupply to equal 10_000
-        // donate to reserveA 10_000 * 10_000
+    function test_addLiquidity() public {
+        supplyInitialLiquidity();
 
-        // attacker
-        vm.startPrank(user2);
-        tokenA.mint(10_000);
-        tokenB.mint(10_000);
-        tokenA.transfer(address(pair), 10_000);
-        tokenB.transfer(address(pair), 10_000);
-        pair.mint(user2);
-        assertGt(pair.balanceOf(user2), 0);
-
-        // owner
         vm.startPrank(user1);
-        tokenA.mint(10_000);
-        tokenB.mint(10_000);
-        tokenA.transfer(address(pair), 10_000);
-        tokenB.transfer(address(pair), 10_000);
-        pair.mint(user1);
-        assertEq(pair.balanceOf(user1), 1);
-    }
-    */
+        tokenA.mint(1000);
+        tokenA.approve(address(pair), 1000);
+        tokenB.mint(100);
+        tokenB.approve(address(pair), 100);
 
+        // minLiquidity is the minimum of
+        // console.log(1000 * pair.totalSupply() / tokenA.balanceOf(address(pair)));
+        // console.log(100 * pair.totalSupply() / tokenB.balanceOf(address(pair)));
+        uint minLiquidity = 316;
+        pair.addLiquidity(minLiquidity, 1000, 100, user1, uint64(block.timestamp));
+        console.log(pair.balanceOf(address(user1)));
+        assertEq(pair.balanceOf(address(user1)), minLiquidity);
+    }
+
+    function test_addLiquidityTakeMin() public {
+        supplyInitialLiquidity();
+
+        vm.startPrank(user1);
+        tokenA.mint(1000);
+        tokenA.approve(address(pair), 1000);
+        tokenB.mint(99);
+        tokenB.approve(address(pair), 99);
+
+        // minLiquidity is the minimum of
+        // console.log(1000 * pair.totalSupply() / tokenA.balanceOf(address(pair)));
+        // console.log(100 * pair.totalSupply() / tokenB.balanceOf(address(pair)));
+        uint minLiquidity = 316;
+        vm.expectRevert();
+        pair.addLiquidity(minLiquidity, 1000, 99, user1, uint64(block.timestamp));
+        console.log(pair.balanceOf(address(user1)));
+        assertEq(pair.balanceOf(address(user1)), 0);
+    }
+
+    // Supply initial liquidity of tokenA:tokenB 10:1
     function supplyInitialLiquidity() internal {
         address userX = vm.addr(314);
         vm.startPrank(userX);
