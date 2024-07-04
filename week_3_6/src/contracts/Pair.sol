@@ -37,6 +37,7 @@ contract Pair is ERC20 {
     error InsufficientLiquidityBurnt();
     error InsufficientLiquidityToMint();
     error InsufficientAmountIn();
+    error InsufficientAmountOut();
     error DeadlinePassed();
     error Locked();
 
@@ -44,10 +45,17 @@ contract Pair is ERC20 {
     * Modifiers *
     ************/
 
-    modifier ensure(uint64 deadline) {
+    modifier ensureDeadline(uint64 deadline) {
         if (deadline > uint(block.timestamp)) {
             revert DeadlinePassed();
         }
+        _;
+    }
+
+    modifier ensureTokens(ERC20 tokenA_, ERC20 tokenB_) {
+        require(_tokenA == tokenA_ || _tokenB == tokenA_, "Unknown tokenA");
+        require(_tokenA == tokenB_ || _tokenB == tokenB_, "Unknown tokenB");
+        require(tokenA_ != tokenB_);
         _;
     }
 
@@ -97,23 +105,13 @@ contract Pair is ERC20 {
         uint balanceB = _tokenB.balanceOf(address(this));
         uint amountA = balanceA - reserveA;
         uint amountB = balanceB - reserveB;
-        if (totalSupply == 0) {
-            liquidity = FixedPointMathLib.sqrt(amountA * amountB) - MINIMUM_LIQUIDITY;
-            _mint(address(0), MINIMUM_LIQUIDITY);
-        } else {
-            uint liquidityA = amountA * totalSupply / reserveA;
-            uint liquidityB = amountB * totalSupply / reserveB;
-            if (liquidityA > liquidityB) {
-                liquidity = liquidityB;
-            } else {
-                liquidity = liquidityA;
-            }
-        }
-
+        liquidity = quoteLiquidity(amountA, amountB, reserveA, reserveB, totalSupply);
         if (liquidity == 0) {
             revert InsufficientLiquidityMint();
         }
-
+        if (totalSupply == 0) {
+            _mint(address(0), MINIMUM_LIQUIDITY);
+        }
         _mint(to, liquidity);
         _updateReserves(balanceA, balanceB);
     }
@@ -122,123 +120,44 @@ contract Pair is ERC20 {
     /// @param to The receiving address of tokens
     /// @return amountA The amount received for tokenA
     /// @return amountB The amount received for tokenB
-    function burn(address to) external lock returns (uint amountA, uint amountB) {
+    function burn(address to) public lock returns (uint amountA, uint amountB) {
         uint totalSupply = totalSupply();
         uint liquidity = balanceOf(address(this));
-        (uint reserveA, uint reserveB) = getReserves();
-        ERC20 __tokenA = _tokenA;
-        ERC20 __tokenB = _tokenB;
-
-        amountA = liquidity * reserveA / totalSupply;
-        amountB = liquidity * reserveB / totalSupply;
-        if (amountA == 0 || amountB == 0) {
+        if (liquidity == 0) {
             revert InsufficientLiquidityBurnt();
         }
+        (uint reserveA, uint reserveB) = getReserves();
+        (amountA, amountB) = quoteAmounts(liquidity, reserveA, reserveB, totalSupply);
 
         _burn(address(this), liquidity);
-        __tokenA.transfer(to, amountA);
-        __tokenB.transfer(to, amountB);
+        address(_tokenA).safeTransfer(to, amountA);
+        address(_tokenB).safeTransfer(to, amountB);
 
-        _updateReserves(__tokenA.balanceOf(address(this)), __tokenB.balanceOf(address(this)));
+        _updateReserves(reserveA - amountA, reserveB - amountB);
     }
 
-    /// @notice Low level call to swap tokens
-    /// @param amountOutA The desired amount of tokenA
-    /// @param amountOutB The desired amount of tokenB
-    /// @param to The receiving address of tokens
-    function swap(uint amountOutA, uint amountOutB, address to) lock external {
-        (uint reserveA, uint reserveB) = getReserves();
-        ERC20 __tokenA = _tokenA;
-        ERC20 __tokenB = _tokenB;
-        uint balanceA = __tokenA.balanceOf(address(this));
-        uint balanceB = __tokenB.balanceOf(address(this));
-        uint amountInA = reserveA - balanceA;
-        uint amountInB = reserveB - balanceB;
-
-        {
-            // scope for Stack too deep error
-            uint adjustedBalanceA = reserveA + amountInA - amountOutA;
-            uint adjustedBalanceB = reserveB + amountInB - amountOutB;
-            if (adjustedBalanceA * adjustedBalanceB < reserveA * reserveB) {
-                revert InsufficientAmountIn();
-            }
-            _updateReserves(adjustedBalanceA, adjustedBalanceB);
-        }
-
-        {
-            // scope for Stack too deep error
-            __tokenA.transfer(to, amountOutA);
-            __tokenB.transfer(to, amountOutB);
-            emit Swap(msg.sender, amountInA, amountInB, amountOutA, amountOutB, to);
-        }
-    }
-
-    // TODO liquidity calculation here is different from mint()
     /// @notice Add liquidity by approving amountA and amountB
-    /// @dev Mint liquidity by approving amountA and amountB
     /// @param minLiquidity The minimum amount of liquidity to be minted
     /// @param amountA The approved amount for tokenA
     /// @param amountB The approved amount for tokenB
     /// @param to The address to receive liquidity tokens
     /// @param deadline Transaction deadline
-    /// @return amountA The tokenA amount used
-    /// @return amountB The tokenB amount used
     /// @return liquidity The minted liquidity amount
     function addLiquidity(
         uint minLiquidity,
-        uint amountADesired,
-        uint amountBDesired,
+        uint amountA,
+        uint amountB,
         address to,
         uint64 deadline
-    ) external ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
-        // We want to keep the constant k the same (or greater)
-        // after the liquidity is added
-        // Ra is reserveA
-        // Rb is reserveB
-        // Ra' is reserveA after the liquidity is added
-        // Rb' is reserveB after the liquidity is added
-        // ∆A is amountA that will be added to the liquidity
-        // ∆B is amountB that will be added to the liquidity
-        // Ra' = Ra + ∆A
-        // Rb' = Rb + ∆B
-        // Maintaining the ratio
-        // ∆A/∆B == Ra/Rb
-        // we want to take amount from the liquidity provider that maintain this ratio
-
-        uint liquidityOptimal;
+    ) external ensureDeadline(deadline) returns (uint liquidity) {
         (uint reserveA, uint reserveB) = getReserves();
-        if (reserveA == 0 && reserveB == 0) {
-            amountA = amountADesired;
-            amountB = amountBDesired;
-        } else {
-            amountA = amountADesired;
-            amountB = quote(amountA, reserveA, reserveB);
-            liquidityOptimal = amountA * amountB;
-            if (liquidityOptimal < minLiquidity) {
-                amountB = amountBDesired;
-                amountA = quote(amountB, reserveB, reserveA);
-                liquidityOptimal = amountA * amountB;
-                if (liquidityOptimal < minLiquidity) {
-                    revert InsufficientLiquidityToMint();
-                }
-            }
+        liquidity = quoteLiquidity(amountA, amountB, reserveA, reserveB, totalSupply());
+        if (liquidity < minLiquidity) {
+            revert InsufficientLiquidityMint();
         }
-
-        if (totalSupply() == 0) {
-            liquidityOptimal == liquidityOptimal - MINIMUM_LIQUIDITY;
-            if (liquidityOptimal < minLiquidity) {
-                revert InsufficientLiquidityToMint();
-            }
-        }
-
         address(_tokenA).safeTransferFrom(msg.sender, address(this), amountA);
         address(_tokenB).safeTransferFrom(msg.sender, address(this), amountB);
-        uint liquidityMinted = mint(to);
-
-        // Not supposed to happen unless my math is wrong
-        // TODO remove this require and add test case
-        require(liquidityMinted == liquidityOptimal, "Dev wrong liquidity minted");
-        liquidity = liquidityMinted;
+        mint(to);
     }
 
     /// @notice Remove liquidity by approving amountAMin & amountBMin
@@ -256,7 +175,103 @@ contract Pair is ERC20 {
         uint amountBMin,
         address to,
         uint64 deadline
-    ) external ensure(deadline) returns (uint amountA, uint amountB) {}
+    ) external ensureDeadline(deadline) returns (uint amountA, uint amountB) {
+        (uint reserveA, uint reserveB) = getReserves();
+        (amountA, amountB) = quoteAmounts(liquidity, reserveA, reserveB, totalSupply());
+        if (amountA < amountAMin || amountB < amountBMin) {
+            revert InsufficientLiquidityBurnt();
+        }
+        address(this).safeTransferFrom(msg.sender, address(this), liquidity);
+        burn(to);
+    }
+
+    /// @notice Low level call to swap tokens
+    /// @param to The receiving address of tokens
+    /// @return amountOut the out amount
+    function swap(address to) lock public returns (uint amountOut) {
+        ERC20 __tokenA = _tokenA;
+        ERC20 __tokenB = _tokenB;
+        (uint reserveA, uint reserveB) = getReserves();
+        uint balanceA = __tokenA.balanceOf(address(this));
+        uint balanceB = __tokenB.balanceOf(address(this));
+        uint amountInA = balanceA > reserveA ? balanceA - reserveA : 0;
+        uint amountInB = balanceB > reserveB ? balanceB - reserveB : 0;
+        if(amountInA == 0 && amountInB == 0) {
+            revert InsufficientAmountIn();
+        }
+        if(amountInA > 0) {
+            amountOut = quote(amountInA, reserveA, reserveB);
+            address(__tokenB).safeTransfer(to, amountOut);
+            emit Swap(msg.sender, amountInA, amountInB, 0, amountOut, to);
+        } else {
+            amountOut = quote(amountInB, reserveB, reserveA);
+            address(__tokenA).safeTransfer(to, amountOut);
+            emit Swap(msg.sender, amountInA, amountInB, amountOut, 0, to);
+        }
+        _updateReserves(balanceA, balanceB);
+    }
+
+    /// @notice Swap exact amount of input token for not less than output amount of tokens
+    /// @param tokenIn The input token
+    /// @param tokenOut The output token
+    /// @param amountIn The approved amount of input token
+    /// @param amountOutMin The minimum desired amount of output token
+    /// @param to The receiving address
+    /// @param deadline Transaction deadline
+    /// @return amountOut The exchanged output amount
+    function swapExactTokensForTokens(
+        ERC20 tokenIn,
+        ERC20 tokenOut,
+        uint amountIn,
+        uint amountOutMin,
+        address to,
+        uint64 deadline
+    ) external ensureDeadline(deadline) ensureTokens(tokenIn, tokenOut) returns (uint amountOut) {
+        (uint reserveA, uint reserveB) = getReserves();
+        if(tokenIn == _tokenA) {
+            amountOut = quote(amountIn, reserveA, reserveB);
+        } else {
+            amountOut = quote(amountIn, reserveB, reserveA);
+        }
+        if(amountOut < amountOutMin) {
+            revert InsufficientAmountIn();
+        }
+
+        address(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        address(tokenOut).safeTransferFrom(msg.sender, address(this), amountOut);
+        swap(to);
+    }
+
+    /// @notice Swap tokens for an exact amount of output tokens
+    /// @param tokenIn The input token
+    /// @param tokenOut The output token
+    /// @param amountOut The desired amount of output token
+    /// @param amountInMax The maximum amount of input token
+    /// @param to The receiving address
+    /// @param deadline Transaction deadline
+    /// @return amountIn The exchanged input amount
+    function swapTokensForExactTokens(
+        ERC20 tokenIn,
+        ERC20 tokenOut,
+        uint amountOut,
+        uint amountInMax,
+        address to,
+        uint64 deadline
+    ) external ensureDeadline(deadline) ensureTokens(tokenIn, tokenOut) returns (uint amountIn) {
+        (uint reserveA, uint reserveB) = getReserves();
+        if(tokenIn == _tokenA) {
+            amountIn = quote(amountOut, reserveB, reserveA);
+        } else {
+            amountIn = quote(amountIn, reserveA, reserveB);
+        }
+        if(amountIn < amountInMax) {
+            revert InsufficientAmountOut();
+        }
+
+        address(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        address(tokenOut).safeTransferFrom(msg.sender, address(this), amountOut);
+        swap(to);
+    }
 
     /*******************
     * Public Functions *
@@ -309,15 +324,48 @@ contract Pair is ERC20 {
     * Pure Functions *
     *****************/
 
-     /// @dev Given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset.
-     /// @param amountA The amount of tokenA.
-     /// @param reserveA The reserve amount of tokenA in the liquidity pool.
-     /// @param reserveB The reserve amount of tokenB in the liquidity pool.
-     /// @return amountB The calculated amount of tokenB.
-     /// @notice This function assumes that `amountA`, `reserveA`, and `reserveB` are all positive values.
+    /// @dev Given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset.
+    /// @param amountA The amount of tokenA.
+    /// @param reserveA The reserve amount of tokenA in the liquidity pool.
+    /// @param reserveB The reserve amount of tokenB in the liquidity pool.
+    /// @return amountB The calculated amount of tokenB.
+    /// @notice This function assumes that `amountA`, `reserveA`, and `reserveB` are all positive values.
+    /// @notice The invariant is `(ReserveA + AmountA) * (reserveB - amountB) = reserveA * reserveB`
     function quote(uint amountA, uint reserveA, uint reserveB) internal pure returns (uint amountB) {
         require(amountA > 0, "amountA must be greater than 0");
         require(reserveA > 0 && reserveB > 0, "reserves must be greater than 0");
-        amountB = amountA * reserveB / reserveA;
+        amountB = amountA * reserveB / (reserveA + amountA);
+    }
+
+    /// @dev Calculates the amount of liquidity tokens to mint based on the provided token amounts and current reserves.
+    /// @param amountA The amount of token A being added to the pool.
+    /// @param amountB The amount of token B being added to the pool.
+    /// @param reserveA The current reserve of token A in the pool.
+    /// @param reserveB The current reserve of token B in the pool.
+    /// @param totalSupply The current total supply of liquidity tokens.
+    /// @return liquidity The amount of liquidity tokens to mint.
+    function quoteLiquidity(uint amountA, uint amountB, uint reserveA, uint reserveB, uint totalSupply) internal pure returns (uint liquidity) {
+        if (totalSupply == 0) {
+            // Initial liquidity provision
+            liquidity = FixedPointMathLib.sqrt(amountA * amountB) - MINIMUM_LIQUIDITY;
+        } else {
+            // Proportional to existing reserves
+            uint liquidityA = amountA * totalSupply / reserveA;
+            uint liquidityB = amountB * totalSupply / reserveB;
+            liquidity = liquidityA < liquidityB ? liquidityA : liquidityB;
+        }
+    }
+
+    /// @dev Calculates the amount of tokens to return to the user when burning liquidity tokens.
+    /// @param liquidity The amount of liquidity tokens to burn.
+    /// @param reserveA The current reserve of token A in the pool.
+    /// @param reserveB The current reserve of token B in the pool.
+    /// @param totalSupply The current total supply of liquidity tokens.
+    /// @return amountA The amount of token A to return.
+    /// @return amountB The amount of token B to return.
+    function quoteAmounts(uint liquidity, uint reserveA, uint reserveB, uint totalSupply) internal pure returns (uint amountA, uint amountB) {
+        require(totalSupply > 0, "Total supply must be greater than 0");
+        amountA = (liquidity * reserveA) / totalSupply;
+        amountB = (liquidity * reserveB) / totalSupply;
     }
 }
