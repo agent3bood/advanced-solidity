@@ -277,6 +277,51 @@ contract Pair is ERC20 {
     * Public Functions *
     *******************/
 
+    /// @dev Given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset.
+    /// @param amountA The amount of tokenA.
+    /// @param reserveA The reserve amount of tokenA in the liquidity pool.
+    /// @param reserveB The reserve amount of tokenB in the liquidity pool.
+    /// @return amountB The calculated amount of tokenB.
+    /// @notice This function assumes that `amountA`, `reserveA`, and `reserveB` are all positive values.
+    /// @notice The invariant is `(ReserveA + AmountA) * (reserveB - amountB) = reserveA * reserveB`
+    function quote(uint amountA, uint reserveA, uint reserveB) public pure returns (uint amountB) {
+        require(amountA > 0, "amountA must be greater than 0");
+        require(reserveA > 0 && reserveB > 0, "reserves must be greater than 0");
+        amountB = amountA * reserveB / (reserveA + amountA);
+    }
+
+    /// @dev Calculates the amount of liquidity tokens to mint based on the provided token amounts and current reserves.
+    /// @param amountA The amount of token A being added to the pool.
+    /// @param amountB The amount of token B being added to the pool.
+    /// @param reserveA The current reserve of token A in the pool.
+    /// @param reserveB The current reserve of token B in the pool.
+    /// @param totalSupply The current total supply of liquidity tokens.
+    /// @return liquidity The amount of liquidity tokens to mint.
+    function quoteLiquidity(uint amountA, uint amountB, uint reserveA, uint reserveB, uint totalSupply) public pure returns (uint liquidity) {
+        if (totalSupply == 0) {
+            // Initial liquidity provision
+            liquidity = FixedPointMathLib.sqrt(amountA * amountB) - MINIMUM_LIQUIDITY;
+        } else {
+            // Proportional to existing reserves
+            uint liquidityA = amountA * totalSupply / reserveA;
+            uint liquidityB = amountB * totalSupply / reserveB;
+            liquidity = liquidityA < liquidityB ? liquidityA : liquidityB;
+        }
+    }
+
+    /// @dev Calculates the amount of tokens to return to the user when burning liquidity tokens.
+    /// @param liquidity The amount of liquidity tokens to burn.
+    /// @param reserveA The current reserve of token A in the pool.
+    /// @param reserveB The current reserve of token B in the pool.
+    /// @param totalSupply The current total supply of liquidity tokens.
+    /// @return amountA The amount of token A to return.
+    /// @return amountB The amount of token B to return.
+    function quoteAmounts(uint liquidity, uint reserveA, uint reserveB, uint totalSupply) public pure returns (uint amountA, uint amountB) {
+        require(totalSupply > 0, "Total supply must be greater than 0");
+        amountA = (liquidity * reserveA) / totalSupply;
+        amountB = (liquidity * reserveB) / totalSupply;
+    }
+
     /*********************
     * Internal Functions *
     *********************/
@@ -323,49 +368,4 @@ contract Pair is ERC20 {
     /*****************
     * Pure Functions *
     *****************/
-
-    /// @dev Given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset.
-    /// @param amountA The amount of tokenA.
-    /// @param reserveA The reserve amount of tokenA in the liquidity pool.
-    /// @param reserveB The reserve amount of tokenB in the liquidity pool.
-    /// @return amountB The calculated amount of tokenB.
-    /// @notice This function assumes that `amountA`, `reserveA`, and `reserveB` are all positive values.
-    /// @notice The invariant is `(ReserveA + AmountA) * (reserveB - amountB) = reserveA * reserveB`
-    function quote(uint amountA, uint reserveA, uint reserveB) internal pure returns (uint amountB) {
-        require(amountA > 0, "amountA must be greater than 0");
-        require(reserveA > 0 && reserveB > 0, "reserves must be greater than 0");
-        amountB = amountA * reserveB / (reserveA + amountA);
-    }
-
-    /// @dev Calculates the amount of liquidity tokens to mint based on the provided token amounts and current reserves.
-    /// @param amountA The amount of token A being added to the pool.
-    /// @param amountB The amount of token B being added to the pool.
-    /// @param reserveA The current reserve of token A in the pool.
-    /// @param reserveB The current reserve of token B in the pool.
-    /// @param totalSupply The current total supply of liquidity tokens.
-    /// @return liquidity The amount of liquidity tokens to mint.
-    function quoteLiquidity(uint amountA, uint amountB, uint reserveA, uint reserveB, uint totalSupply) internal pure returns (uint liquidity) {
-        if (totalSupply == 0) {
-            // Initial liquidity provision
-            liquidity = FixedPointMathLib.sqrt(amountA * amountB) - MINIMUM_LIQUIDITY;
-        } else {
-            // Proportional to existing reserves
-            uint liquidityA = amountA * totalSupply / reserveA;
-            uint liquidityB = amountB * totalSupply / reserveB;
-            liquidity = liquidityA < liquidityB ? liquidityA : liquidityB;
-        }
-    }
-
-    /// @dev Calculates the amount of tokens to return to the user when burning liquidity tokens.
-    /// @param liquidity The amount of liquidity tokens to burn.
-    /// @param reserveA The current reserve of token A in the pool.
-    /// @param reserveB The current reserve of token B in the pool.
-    /// @param totalSupply The current total supply of liquidity tokens.
-    /// @return amountA The amount of token A to return.
-    /// @return amountB The amount of token B to return.
-    function quoteAmounts(uint liquidity, uint reserveA, uint reserveB, uint totalSupply) internal pure returns (uint amountA, uint amountB) {
-        require(totalSupply > 0, "Total supply must be greater than 0");
-        amountA = (liquidity * reserveA) / totalSupply;
-        amountB = (liquidity * reserveB) / totalSupply;
-    }
 }
