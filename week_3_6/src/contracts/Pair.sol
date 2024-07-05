@@ -54,7 +54,7 @@ contract Pair is ERC20 {
     }
 
     modifier ensureToken(ERC20 token) {
-        require(_tokenA == token || _tokenB == token, "Unknown tokenA");
+        require(_tokenA == token || _tokenB == token, "Unknown token");
         _;
     }
 
@@ -286,14 +286,14 @@ contract Pair is ERC20 {
     /// @param data Arbitrary data structure, intended to contain user-defined parameters.
     function flashLoan(
         IERC3156FlashBorrower receiver,
-        address token,
+        ERC20 token,
         uint256 amount,
         bytes calldata data
     ) lock ensureToken(token) external returns (bool) {
         require(amount <= token.balanceOf(address(this)), "Insufficient funds");
-        token.safeTransfer(address(receiver), amount);
-        require(receiver.onFlashLoan(msg.sender, token, amount, 0, data) == keccak256("ERC3156FlashBorrower.onFlashLoan"), "Invalid return");
-        token.safeTransferFrom(address(receiver), address(this), amount);
+        address(token).safeTransfer(address(receiver), amount);
+        require(receiver.onFlashLoan(msg.sender, address(token), amount, 0, data) == keccak256("ERC3156FlashBorrower.onFlashLoan"), "Invalid return");
+        address(token).safeTransferFrom(address(receiver), address(this), amount);
         return true;
     }
 
@@ -402,12 +402,8 @@ contract Pair is ERC20 {
     /// @notice The fee is always zero; enjoy your flash loan!
     /// @dev The fee to be charged for a given loan.
     /// @param token The loan currency.
-    /// @param amount The amount of tokens lent.
     /// @return The amount of `token` to be charged for the loan, on top of the returned principal.
-    function flashFee(
-        address token,
-        uint256 amount
-    ) ensureToken(token) external view returns (uint256) {
+    function flashFee(ERC20 token, uint256) ensureToken(token) external view returns (uint256) {
         return 0;
     }
 
