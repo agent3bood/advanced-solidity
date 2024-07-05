@@ -5,6 +5,7 @@ pragma solidity 0.8.26;
 import "solady/tokens/ERC20.sol";
 import "solady/utils/FixedPointMathLib.sol";
 import "solady/utils/SafeTransferLib.sol";
+import "./interfaces/IERC3156FlashBorrower.sol";
 
 contract Pair is ERC20 {
     using SafeTransferLib for address;
@@ -49,6 +50,11 @@ contract Pair is ERC20 {
         if (deadline > uint(block.timestamp)) {
             revert DeadlinePassed();
         }
+        _;
+    }
+
+    modifier ensureToken(ERC20 token) {
+        require(_tokenA == token || _tokenB == token, "Unknown tokenA");
         _;
     }
 
@@ -196,10 +202,10 @@ contract Pair is ERC20 {
         uint balanceB = __tokenB.balanceOf(address(this));
         uint amountInA = balanceA > reserveA ? balanceA - reserveA : 0;
         uint amountInB = balanceB > reserveB ? balanceB - reserveB : 0;
-        if(amountInA == 0 && amountInB == 0) {
+        if (amountInA == 0 && amountInB == 0) {
             revert InsufficientAmountIn();
         }
-        if(amountInA > 0) {
+        if (amountInA > 0) {
             amountOut = quote(amountInA, reserveA, reserveB);
             address(__tokenB).safeTransfer(to, amountOut);
             emit Swap(msg.sender, amountInA, amountInB, 0, amountOut, to);
@@ -228,12 +234,12 @@ contract Pair is ERC20 {
         uint64 deadline
     ) external ensureDeadline(deadline) ensureTokens(tokenIn, tokenOut) returns (uint amountOut) {
         (uint reserveA, uint reserveB) = getReserves();
-        if(tokenIn == _tokenA) {
+        if (tokenIn == _tokenA) {
             amountOut = quote(amountIn, reserveA, reserveB);
         } else {
             amountOut = quote(amountIn, reserveB, reserveA);
         }
-        if(amountOut < amountOutMin) {
+        if (amountOut < amountOutMin) {
             revert InsufficientAmountIn();
         }
 
@@ -259,18 +265,36 @@ contract Pair is ERC20 {
         uint64 deadline
     ) external ensureDeadline(deadline) ensureTokens(tokenIn, tokenOut) returns (uint amountIn) {
         (uint reserveA, uint reserveB) = getReserves();
-        if(tokenIn == _tokenA) {
+        if (tokenIn == _tokenA) {
             amountIn = quote(amountOut, reserveB, reserveA);
         } else {
             amountIn = quote(amountIn, reserveA, reserveB);
         }
-        if(amountIn < amountInMax) {
+        if (amountIn < amountInMax) {
             revert InsufficientAmountOut();
         }
 
         address(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         address(tokenOut).safeTransferFrom(msg.sender, address(this), amountOut);
         swap(to);
+    }
+
+    /// @dev Initiate a flash loan.
+    /// @param receiver The receiver of the tokens in the loan, and the receiver of the callback.
+    /// @param token The loan currency.
+    /// @param amount The amount of tokens lent.
+    /// @param data Arbitrary data structure, intended to contain user-defined parameters.
+    function flashLoan(
+        IERC3156FlashBorrower receiver,
+        address token,
+        uint256 amount,
+        bytes calldata data
+    ) lock ensureToken(token) external returns (bool) {
+        require(amount <= token.balanceOf(address(this)), "Insufficient funds");
+        token.safeTransfer(address(receiver), amount);
+        require(receiver.onFlashLoan(msg.sender, token, amount, fee, data) == keccak256("ERC3156FlashBorrower.onFlashLoan"), "Invalid return");
+        token.safeTransferFrom(address(receiver), address(this), amount);
+        return true;
     }
 
     /*******************
@@ -363,6 +387,28 @@ contract Pair is ERC20 {
     function getReserves() public view returns (uint reserveA, uint reserveB) {
         reserveA = _reserveA;
         reserveB = _reserveB;
+    }
+
+    /// @dev Returns the current total supply of the token.
+    /// @param token The token address
+    /// @return The total supply of the token
+    function maxFlashLoan(
+        ERC20 token
+    ) ensureToken(token) external view returns (uint256) {
+        require(token == _tokenA || token == _tokenB, "Unknown token");
+        return token.balanceOf(address(this));
+    }
+
+    /// @notice The fee is always zero; enjoy your flash loan!
+    /// @dev The fee to be charged for a given loan.
+    /// @param token The loan currency.
+    /// @param amount The amount of tokens lent.
+    /// @return The amount of `token` to be charged for the loan, on top of the returned principal.
+    function flashFee(
+        address token,
+        uint256 amount
+    ) ensureToken(token) external view returns (uint256) {
+        return 0;
     }
 
     /*****************
