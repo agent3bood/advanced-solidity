@@ -292,7 +292,7 @@ contract Pair is ERC20 {
     ) lock ensureToken(token) external returns (bool) {
         require(amount <= token.balanceOf(address(this)), "Insufficient funds");
         token.safeTransfer(address(receiver), amount);
-        require(receiver.onFlashLoan(msg.sender, token, amount, fee, data) == keccak256("ERC3156FlashBorrower.onFlashLoan"), "Invalid return");
+        require(receiver.onFlashLoan(msg.sender, token, amount, 0, data) == keccak256("ERC3156FlashBorrower.onFlashLoan"), "Invalid return");
         token.safeTransferFrom(address(receiver), address(this), amount);
         return true;
     }
