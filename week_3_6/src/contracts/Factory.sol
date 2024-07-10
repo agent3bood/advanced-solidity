@@ -10,7 +10,7 @@ contract Factory {
     event PairCreated(address indexed tokenA, address indexed tokenB, address pair);
 
     /// @dev Returns the address of the pair for two tokens
-    mapping(address => address) public getPair;
+    mapping(address => mapping(address => address)) public getPair;
 
     /// @dev Creates a new pair for two tokens
     /// @param token0 The address of the first token
@@ -20,10 +20,10 @@ contract Factory {
         require(token0 != token1, "identical tokens!");
         require(token0 != address(0), "zero address");
         (address tokenA, address tokenB) = token0 < token1 ? (token0, token1) : (token1, token0);
-        require(getPair[tokenA] == address(0), "pair exists");
+        require(getPair[tokenA][tokenB] == address(0), "pair exists");
         pair = address(new Pair("name", "symbol", ERC20(tokenA), ERC20(tokenB)));
-        getPair[tokenA] = pair;
-        getPair[tokenB] = pair;
+        getPair[tokenA][tokenB] = pair;
+        getPair[tokenB][tokenA] = pair;
         emit PairCreated(tokenA, tokenB, pair);
     }
 }

@@ -85,14 +85,6 @@ contract Pair is ERC20 {
         _tokenB = tokenB_;
     }
 
-    receive() external payable {
-        revert();
-    }
-
-    fallback() external payable {
-        revert();
-    }
-
     /*********************
     * External Functions *
     *********************/
@@ -187,7 +179,7 @@ contract Pair is ERC20 {
         if (amountA < amountAMin || amountB < amountBMin) {
             revert InsufficientLiquidityBurnt();
         }
-        address(this).safeTransferFrom(msg.sender, address(this), liquidity);
+        transferFrom(msg.sender, address(this), liquidity);
         burn(to);
     }
 
@@ -244,7 +236,6 @@ contract Pair is ERC20 {
         }
 
         address(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        address(tokenOut).safeTransferFrom(msg.sender, address(this), amountOut);
         swap(to);
     }
 
@@ -270,12 +261,11 @@ contract Pair is ERC20 {
         } else {
             amountIn = quote(amountIn, reserveA, reserveB);
         }
-        if (amountIn < amountInMax) {
+        if (amountIn > amountInMax) {
             revert InsufficientAmountOut();
         }
 
         address(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        address(tokenOut).safeTransferFrom(msg.sender, address(this), amountOut);
         swap(to);
     }
 
