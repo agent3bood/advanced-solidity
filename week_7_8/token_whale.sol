@@ -66,7 +66,7 @@ contract TokenWhaleChallenge {
 }
 
 // solc-select use 0.4.25
-// echidna --contract TestTokenWhaleChallenge --test-mode assertion week_7_8/token_whale.sol
+// echidna --contract TestTokenWhaleChallenge week_7_8/token_whale.sol
 contract TestTokenWhaleChallenge is TokenWhaleChallenge(msg.sender) {
     function echidna_check_balance() public view returns (bool) {
         return balanceOf[msg.sender] <= 1000;
