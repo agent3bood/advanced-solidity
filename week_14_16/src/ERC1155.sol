@@ -62,13 +62,13 @@ contract ERC1155 is IERC1155 {
             if iszero(eq(accounts.length, ids.length)) {
                 revert(0, 0)
             }
-            let len := accounts.length
-            let retSize := add(0x20, mul(len, 0x20))
-            let retArr := mload(0x40)
-
-            // update free memory pointer
             let p := mload(0x40)
-            mstore(0x40, add(retArr, retSize))
+            let len := accounts.length
+            let retSize := add(0x40, mul(len, 0x20))
+            let retP := add(p, 0x40)
+
+            mstore(retP, 0x20) // offset
+            mstore(add(retP, 0x20), len) // length
 
             let i := 0
             for {
@@ -81,14 +81,19 @@ contract ERC1155 is IERC1155 {
 
                 mstore(p, account)
                 mstore(add(p, 0x20), id)
+                // log0(p, 0x20)
+                // log0(add(p, 0x20), 0x20)
 
                 let slot := keccak256(p, 0x40)
                 let b := sload(slot)
+                mstore(p, b)
+                // log0(p, 0x20)
 
-                mstore(add(add(retArr, 0x20), mul(i, 0x20)), b)
+                // skip two workds (offset, length) and then add the balance at index
+                mstore(add(add(retP, 0x40), mul(i, 0x20)), b)
             }
-
-            return(retArr, retSize)
+            // log0(retP, retSize)
+            return(retP, retSize)
         }
     }
 
