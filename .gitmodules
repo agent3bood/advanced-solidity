@@ -28,3 +28,15 @@
 [submodule "week_7_8/lib/openzeppelin-contracts"]
 	path = week_7_8/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "week_14_16/lib/forge-std"]
+	path = week_14_16/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "week_14_16/lib/ds-test"]
+	path = week_14_16/lib/ds-test
+	url = https://github.com/dapphub/ds-test
+[submodule "week_14_16/lib/openzeppelin-contracts"]
+	path = week_14_16/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "week_14_16/lib/yul-console-logging"]
+	path = week_14_16/lib/yul-console-logging
+	url = https://github.com/adeelhasan/yul-console-logging
