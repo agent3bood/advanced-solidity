@@ -314,10 +314,40 @@ contract ERC1155 is IERC1155 {
         uint256[] calldata ids,
         uint256[] calldata amounts
     ) internal virtual {
+        // TODO enable assembly
+        // assembly {
+        //     if eq(from, 0) {
+        //         revert(0, 0)
+        //     }
+        //     if iszero(eq(ids.length, amounts.length)) {
+        //         revert(0, 0)
+        //     }
+
+        //     let len := ids.length
+        //     let i := 0
+        //     for {
+
+        //     } lt(i, len) {
+        //         i := add(i, 1)
+        //     } {
+        //         let id := calldataload(add(ids.offset, mul(i, 0x20)))
+        //         let amount := calldataload(add(amounts.offset, mul(i, 0x20)))
+
+        //         _deductFromBalance(from, id, amount)
+        //     }
+        // }
+
         if (from == address(0)) {
             revert();
         }
-        _updateWithAcceptanceCheck(from, address(0), ids, amounts, "");
+        if (ids.length != amounts.length) {
+            revert();
+        }
+        for(uint i=0; i<ids.length; i++) {
+            uint id = ids[i];
+            uint amount = amounts[i];
+            _deductFromBalance(from, id, amount);
+        }
     }
 
     function _setApprovalForAll(
