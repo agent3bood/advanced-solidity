@@ -260,71 +260,8 @@ contract ERC1155 is IERC1155 {
             if iszero(to) {
                 revert(0, 0)
             }
-            let p := mload(0x40)
-            mstore(p, to)
-            mstore(add(p, 0x20), id)
-
-            let slot := keccak256(p, 0x40)
-            let b := sload(slot)
-            let newBalance := add(b, amount)
-
-            sstore(slot, newBalance)
-
-            if eq(extcodesize(to), 0) {
-                return(0, 0)
-            }
-            //
-            // call onERC1155Received(operator, from, id, amount, mintData)
-            // store call params
-            //
-            // first is the function selector, 4 bytes
-            // bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"))
-            // 0xf23a6e6100000000000000000000000000000000000000000000000000000000
-            // we need to put the whole 32 bytes
-            // otherwise solidity will pad the value with zeros to the left
-            let
-                onERC1155ReceivedSelector
-            := 0xf23a6e6100000000000000000000000000000000000000000000000000000000
-            mstore(p, onERC1155ReceivedSelector)
-            log0(p, 4)
-            mstore(add(p, 0x04), caller()) // operator
-            log0(add(p, 0x4), 0x20)
-            mstore(add(p, 0x24), 0x0) // from
-            log0(add(p, 0x24), 0x20)
-            mstore(add(p, 0x44), id)
-            log0(add(p, 0x44), 0x20)
-            mstore(add(p, 0x64), amount)
-            log0(add(p, 0x64), 0x20)
-
-            // data
-            // [offset , length , data........] // nice name
-            // [bytes32, bytes32, dynamic size] // words
-            // [0x84   , 0xa4   , 0xc4........] // offset in this function - p
-            // [0x80   , 0xa0   , 0xc0........] // offset in calldata, this is what the receiver will see
-            // offset of 'data' in the calldata we are constructing
-            // we put 'a0' and NOT 'a4' because we have to subtract the '4' function selector bytes
-            mstore(add(p, 0x84), 0xa0)
-            log0(add(p, 0x84), 0x20)
-            // bytes in calldata look like this [offset, length, data.......]
-            // where offset will point at 'length'
-            let dataLen := data.length
-            mstore(add(p, 0xa4), dataLen)
-            log0(add(p, 0xa4), 0x20)
-            // copy data to memory
-            calldatacopy(add(p, 0xc4), data.offset, dataLen)
-            log0(add(p, 0xc4), dataLen)
-
-            let totalSize := add(0xc4, mul(div(add(dataLen, 31), 32), 32))
-            log0(p, totalSize)
-            mstore(0, 0)
-            let success := call(gas(), to, 0, p, totalSize, 0x00, 0x04)
-            if iszero(success) {
-                revert(0, 0)
-            }
-            if iszero(eq(mload(0x00), onERC1155ReceivedSelector)) {
-                revert(0, 0)
-            }
         }
+        _update(msg.sender, address(0), to, id, amount, data);
     }
 
     function _batchMint(
@@ -337,28 +274,29 @@ contract ERC1155 is IERC1155 {
             if iszero(to) {
                 revert(0, 0)
             }
-            if iszero(eq(ids.length, amounts.length)) {
-                revert(0, 0)
-            }
-
-            let p := mload(0x40)
-            mstore(p, to) // used to calculate slots
-            let len := ids.length
-            let i := 0
-            for {
-
-            } lt(i, len) {
-                i := add(i, 1)
-            } {
-                let id := calldataload(add(ids.offset, mul(i, 0x20)))
-                let amount := calldataload(add(amounts.offset, mul(i, 0x20)))
-                mstore(add(p, 0x20), id)
-                let slot := keccak256(p, 0x40)
-                let b := sload(slot)
-                let newBalance := add(b, amount)
-                sstore(slot, newBalance)
-            }
         }
+
+        _updateBatch(msg.sender, address(0), to, ids, amounts, data);
+
+        // assembly {
+        //     let p := mload(0x40)
+        //     mstore(p, to) // used to calculate slots
+        //     let len := ids.length
+        //     let i := 0
+        //     for {
+
+        //     } lt(i, len) {
+        //         i := add(i, 1)
+        //     } {
+        //         let id := calldataload(add(ids.offset, mul(i, 0x20)))
+        //         let amount := calldataload(add(amounts.offset, mul(i, 0x20)))
+        //         mstore(add(p, 0x20), id)
+        //         let slot := keccak256(p, 0x40)
+        //         let b := sload(slot)
+        //         let newBalance := add(b, amount)
+        //         sstore(slot, newBalance)
+        //     }
+        // }
     }
 
     function _burn(address from, uint256 id, uint256 amount) internal virtual {
@@ -491,6 +429,195 @@ contract ERC1155 is IERC1155 {
                         revert(add(32, reason), mload(reason))
                     }
                 }
+            }
+        }
+    }
+
+    function _update(
+        address operator,
+        address from,
+        address to,
+        uint id,
+        uint amount,
+        bytes calldata data
+    ) internal {
+        // TODO: update from balance
+        assembly {
+            let p := mload(0x40)
+            mstore(p, to)
+            mstore(add(p, 0x20), id)
+
+            let slot := keccak256(p, 0x40)
+            let b := sload(slot)
+            let newBalance := add(b, amount)
+
+            sstore(slot, newBalance)
+
+            if eq(extcodesize(to), 0) {
+                return(0, 0)
+            }
+
+            //
+            // call onERC1155Received(operator, from, id, amount, mintData)
+            // store call params
+            //
+            // first is the function selector, 4 bytes
+            // bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"))
+            // 0xf23a6e6100000000000000000000000000000000000000000000000000000000
+            // we need to put the whole 32 bytes
+            // otherwise solidity will pad the value with zeros to the left
+            let
+                onERC1155ReceivedSelector
+            := 0xf23a6e6100000000000000000000000000000000000000000000000000000000
+            mstore(p, onERC1155ReceivedSelector)
+            log0(p, 4)
+            mstore(add(p, 0x04), operator)
+            log0(add(p, 0x4), 0x20)
+            mstore(add(p, 0x24), from)
+            log0(add(p, 0x24), 0x20)
+            mstore(add(p, 0x44), id)
+            log0(add(p, 0x44), 0x20)
+            mstore(add(p, 0x64), amount)
+            log0(add(p, 0x64), 0x20)
+
+            // data
+            // [offset , length , data........] // nice name
+            // [bytes32, bytes32, dynamic size] // words
+            // [0x84   , 0xa4   , 0xc4........] // offset in this function - p
+            // [0x80   , 0xa0   , 0xc0........] // offset in calldata, this is what the receiver will see
+            // offset of 'data' in the calldata we are constructing
+            // we put 'a0' and NOT 'a4' because we have to subtract the '4' function selector bytes
+            mstore(add(p, 0x84), 0xa0)
+            log0(add(p, 0x84), 0x20)
+            // bytes in calldata look like this [offset, length, data.......]
+            // where offset will point at 'length'
+            let dataLen := data.length
+            mstore(add(p, 0xa4), dataLen)
+            log0(add(p, 0xa4), 0x20)
+            // copy data to memory
+            calldatacopy(add(p, 0xc4), data.offset, dataLen)
+            log0(add(p, 0xc4), dataLen)
+
+            let totalSize := add(0xc4, mul(div(add(dataLen, 31), 32), 32))
+            log0(p, totalSize)
+            mstore(0, 0)
+            let success := call(gas(), to, 0, p, totalSize, 0x00, 0x04)
+            if iszero(success) {
+                revert(0, 0)
+            }
+            if iszero(eq(mload(0x00), onERC1155ReceivedSelector)) {
+                revert(0, 0)
+            }
+        }
+    }
+
+    function _updateBatch(
+        address operator,
+        address from,
+        address to,
+        uint256[] calldata ids,
+        uint256[] calldata amounts,
+        bytes calldata data
+    ) internal {
+        // TODO: update from balance
+        assembly {
+            if iszero(eq(ids.length, amounts.length)) {
+                revert(0, 0)
+            }
+
+            let p := mload(0x40)
+            mstore(p, to)
+            let len := ids.length
+            let i := 0
+            for {
+
+            } lt(i, len) {
+                i := add(i, 1)
+            } {
+                let id := calldataload(add(ids.offset, mul(i, 0x20)))
+                let amount := calldataload(add(amounts.offset, mul(i, 0x20)))
+
+                mstore(add(p, 0x20), id)
+
+                let slot := keccak256(p, 0x40)
+                let b := sload(slot)
+                let newBalance := add(b, amount)
+
+                sstore(slot, newBalance)
+            }
+
+            if eq(extcodesize(to), 0) {
+                return(0, 0)
+            }
+
+            // [selector,   operator,   from,   idsOffset,  amountsOffset,  dataOffset, ids , amounts, data]
+            // [0x00    ,   0x04     ,  0x24,   0x44     ,  0x64         ,  0x84      , 0xa4, 0x..   , 0x..] // memory locations
+            // [0x00    ,   0x00     ,  0x20,   0x40     ,  0x60         ,  0x80      , 0xa0, 0x..   , 0x..] // calldata location
+            //
+            // call onERC1155BatchReceived(operator, from, ids, amounts, mintData)
+            // first is the function selector, 4 bytes
+            // bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))
+            // 0xbc197c8100000000000000000000000000000000000000000000000000000000
+            // we need to put the whole 32 bytes
+            // otherwise solidity will pad the value with zeros to the left
+            let
+                onERC1155BatchReceivedSelector
+            := 0xbc197c8100000000000000000000000000000000000000000000000000000000
+            mstore(p, onERC1155BatchReceivedSelector)
+            log0(p, 4)
+            mstore(add(p, 0x04), operator)
+            log0(add(p, 0x4), 0x20)
+            mstore(add(p, 0x24), from)
+            log0(add(p, 0x24), 0x20)
+
+            let idsLen := ids.length
+            let idsLenBytes := mul(idsLen, 0x20)
+
+            let idsOffset := 0xa0 // ids offset relative to start of calldata; noes NOT start count selector
+            mstore(add(p, 0x44), idsOffset)
+
+            // 0x20(length slot) + idsOffset + idsLenBytes
+            let amountsOffset := add(add(idsOffset, idsLenBytes), 0x20)
+            mstore(add(p, 0x64), amountsOffset)
+
+            let dataOffset := add(add(amountsOffset, idsLenBytes), 0x20)
+            mstore(add(p, 0x84), dataOffset)
+
+            let pData := add(p, 0xa4)
+
+            mstore(pData, idsLen)
+            pData := add(pData, 0x20)
+            calldatacopy(pData, ids.offset, idsLenBytes)
+            pData := add(pData, idsLenBytes)
+
+            mstore(pData, idsLen)
+            pData := add(pData, 0x20)
+            calldatacopy(pData, amounts.offset, idsLenBytes)
+            pData := add(pData, idsLenBytes)
+
+            let dataLen := data.length
+            mstore(pData, dataLen)
+            pData := add(pData, 0x20)
+            calldatacopy(pData, data.offset, dataLen)
+
+            let totalSize := add(
+                0xc4,
+                add(
+                    add(idsLenBytes, 0x20),
+                    add(
+                        add(idsLenBytes, 0x20),
+                        mul(div(add(dataLen, 31), 32), 32)
+                    )
+                )
+            )
+            log0(p, totalSize)
+            mstore(0, 0)
+            let success := call(gas(), to, 0, p, totalSize, 0x00, 0x04)
+            if iszero(success) {
+                revert(0, 0)
+            }
+            if iszero(eq(mload(0x00), onERC1155BatchReceivedSelector)) {
+                revert(0, 0)
             }
         }
     }
