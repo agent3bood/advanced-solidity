@@ -261,7 +261,8 @@ contract ERC1155 is IERC1155 {
                 revert(0, 0)
             }
         }
-        _update(msg.sender, address(0), to, id, amount, data);
+        _addToBalance(to, id, amount);
+        _checkOnERC1155Received(msg.sender, address(0), to, id, amount, data);
     }
 
     function _batchMint(
@@ -300,14 +301,12 @@ contract ERC1155 is IERC1155 {
     }
 
     function _burn(address from, uint256 id, uint256 amount) internal virtual {
-        if (from == address(0)) {
-            revert();
+        assembly {
+            if iszero(from) {
+                revert(0, 0)
+            }
         }
-        (uint256[] memory ids, uint256[] memory values) = _asSingletonArrays(
-            id,
-            amount
-        );
-        _updateWithAcceptanceCheck(from, address(0), ids, values, "");
+        _deductFromBalance(from, id, amount);
     }
 
     function _batchBurn(
@@ -433,15 +432,7 @@ contract ERC1155 is IERC1155 {
         }
     }
 
-    function _update(
-        address operator,
-        address from,
-        address to,
-        uint id,
-        uint amount,
-        bytes calldata data
-    ) internal {
-        // TODO: update from balance
+    function _addToBalance(address to, uint id, uint amount) internal {
         assembly {
             let p := mload(0x40)
             mstore(p, to)
@@ -449,13 +440,43 @@ contract ERC1155 is IERC1155 {
 
             let slot := keccak256(p, 0x40)
             let b := sload(slot)
+
             let newBalance := add(b, amount)
+            sstore(slot, newBalance)
+        }
+    }
+
+    function _deductFromBalance(address from, uint id, uint amount) internal {
+        assembly {
+            let p := mload(0x40)
+            mstore(p, from)
+            mstore(add(p, 0x20), id)
+
+            let slot := keccak256(p, 0x40)
+            let b := sload(slot)
+
+            let newBalance := sub(b, amount)
+            if gt(newBalance, b) {
+                revert(0, 0)
+            }
 
             sstore(slot, newBalance)
+        }
+    }
 
+    function _checkOnERC1155Received(
+        address operator,
+        address from,
+        address to,
+        uint id,
+        uint amount,
+        bytes calldata data
+    ) internal {
+        assembly {
             if eq(extcodesize(to), 0) {
                 return(0, 0)
             }
+            let p := mload(0x40)
 
             //
             // call onERC1155Received(operator, from, id, amount, mintData)
